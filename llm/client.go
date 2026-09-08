@@ -26,7 +26,7 @@ func New(cfg config.Config) *Client {
 		model: cloudflare.Chat(
 			cfg.Model,
 			cloudflare.WithAccountID(cfg.AccountID),
-			cloudflare.WithAPIKey(cfg.APIKey),
+			cloudflare.WithAPIKey(cfg.APIToken),
 		),
 	}
 }
