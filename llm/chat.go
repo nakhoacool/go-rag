@@ -10,6 +10,10 @@ import (
 	"github.com/zendev-sh/goai/provider/cloudflare"
 )
 
+type Chat interface {
+	ChatStream(ctx context.Context, messages []Message, onTextChunk func(string)) (Message, error)
+}
+
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`

@@ -1,14 +1,15 @@
 package vector
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 
 	cfclient "go-rag/cloudflare"
 
 	cloudflareapi "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/option"
 	"github.com/cloudflare/cloudflare-go/v7/vectorize"
 )
 
@@ -50,13 +51,14 @@ func (v *CloudflareVectorStore) Upsert(ctx context.Context, id string, embedding
 		return err
 	}
 
-	_, err = v.client.Vectorize.Upsert(
+	vector = append(vector, '\n')
+	var response vectorize.IndexUpsertResponseEnvelope
+	err = v.client.CF.Post(
 		ctx,
-		v.client.VectorizeIndex,
-		vectorize.IndexUpsertParams{
-			AccountID: cloudflareapi.F(v.client.AccountID),
-			Body:      strings.NewReader(string(vector)),
-		},
+		"accounts/"+v.client.AccountID+"/vectorize/v2/indexes/"+v.client.VectorizeIndex+"/upsert",
+		nil,
+		&response,
+		option.WithRequestBody("application/x-ndjson", bytes.NewReader(vector)),
 	)
 	return err
 }

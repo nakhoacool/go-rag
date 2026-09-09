@@ -17,7 +17,7 @@ type Options struct {
 	SystemPromptFile string
 }
 
-func RunREPL(ctx context.Context, client *llm.Client, opts Options) error {
+func RunREPL(ctx context.Context, client llm.Chat, opts Options) error {
 	in := bufio.NewScanner(os.Stdin)
 	in.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
