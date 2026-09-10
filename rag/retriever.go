@@ -3,19 +3,18 @@ package rag
 import (
 	"context"
 	"fmt"
-	"go-rag/document"
 	"go-rag/llm"
-	"go-rag/vector"
+	"go-rag/store"
 )
 
 type Retriever struct {
 	embedder  llm.QueryEmbedder
-	documents document.DocumentStore
-	vectors   vector.VectorStore
+	documents store.DocumentStore
+	vectors   store.VectorStore
 	topK      int
 }
 
-func NewRetriever(embedder llm.QueryEmbedder, documents document.DocumentStore, vectors vector.VectorStore, topK int) *Retriever {
+func NewRetriever(embedder llm.QueryEmbedder, documents store.DocumentStore, vectors store.VectorStore, topK int) *Retriever {
 	if topK <= 0 {
 		topK = 5
 	}
@@ -42,7 +41,7 @@ func (r *Retriever) Retrieve(ctx context.Context, question string) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("get documents: %w", err)
 	}
-	byID := make(map[string]document.Document, len(docs))
+	byID := make(map[string]store.Document, len(docs))
 	for _, doc := range docs {
 		byID[doc.ID] = doc
 	}

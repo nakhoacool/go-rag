@@ -4,9 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go-rag/document"
 	"go-rag/llm"
-	"go-rag/vector"
+	"go-rag/store"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,7 +17,7 @@ import (
 
 const debounceDelay = 500 * time.Millisecond
 
-func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents document.DocumentStore, vectors vector.VectorStore, logger *log.Logger) error {
+func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents store.DocumentStore, vectors store.VectorStore, logger *log.Logger) error {
 	if filepath.Clean(opts.SourceDir) == filepath.Clean(opts.ProcessedDir) {
 		return errors.New("source and processed directories must differ")
 	}
@@ -95,7 +94,7 @@ func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents d
 				}
 				continue
 			}
-			count, err := processContent(ctx, path, content, opts, embedder, documents, vectors)
+			count, err := ProcessContent(ctx, path, content, opts, embedder, documents, vectors)
 			if err != nil {
 				logger.Printf("ingest %q: %v", path, err)
 				continue

@@ -2,8 +2,7 @@ package rag
 
 import (
 	"fmt"
-	"go-rag/document"
-	"go-rag/vector"
+	"go-rag/store"
 	"strings"
 )
 
@@ -11,7 +10,7 @@ const contextPreamble = `Use the following excerpts from the document collection
 
 const unknownSource = "(unknown source)"
 
-func formatContext(hits []vector.Match, documents map[string]document.Document) string {
+func formatContext(hits []store.Match, documents map[string]store.Document) string {
 	if len(hits) == 0 {
 		return ""
 	}

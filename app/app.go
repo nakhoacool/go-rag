@@ -7,11 +7,10 @@ import (
 	"go-rag/chat"
 	"go-rag/cloudflare"
 	"go-rag/config"
-	"go-rag/document"
 	"go-rag/ingest"
 	"go-rag/llm"
 	"go-rag/rag"
-	"go-rag/vector"
+	"go-rag/store"
 	"log"
 	"os"
 	"sync"
@@ -26,8 +25,8 @@ func Run(parent context.Context, cfg config.Config) error {
 
 	client := llm.New(cfg)
 	cloudflareClient := cloudflare.New(cfg)
-	documents := document.NewDocumentStore(cloudflareClient)
-	vectors := vector.NewVectorStore(cloudflareClient)
+	documents := store.NewDocumentStore(cloudflareClient)
+	vectors := store.NewVectorStore(cloudflareClient)
 	embedder := llm.NewJinaEmbedder(cfg)
 	var wg sync.WaitGroup
 	wg.Go(func() {

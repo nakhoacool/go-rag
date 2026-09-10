@@ -5,9 +5,8 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"go-rag/document"
 	"go-rag/llm"
-	"go-rag/vector"
+	"go-rag/store"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +34,7 @@ func sourcePath(sourceDir, source string) (string, error) {
 	return filepath.Clean(relative), nil
 }
 
-func removeStale(ctx context.Context, source string, keep []string, documents document.DocumentStore, vectors vector.VectorStore) error {
+func removeStale(ctx context.Context, source string, keep []string, documents store.DocumentStore, vectors store.VectorStore) error {
 	existing, err := documents.GetBySource(ctx, source)
 	if err != nil {
 		return fmt.Errorf("find existing documents: %w", err)
@@ -62,7 +61,7 @@ func removeStale(ctx context.Context, source string, keep []string, documents do
 	return nil
 }
 
-func removeSource(ctx context.Context, source string, documents document.DocumentStore, vectors vector.VectorStore) error {
+func removeSource(ctx context.Context, source string, documents store.DocumentStore, vectors store.VectorStore) error {
 	existing, err := documents.GetBySource(ctx, source)
 	if err != nil {
 		return fmt.Errorf("find source documents: %w", err)
@@ -83,7 +82,7 @@ func removeSource(ctx context.Context, source string, documents document.Documen
 	return nil
 }
 
-func processContent(ctx context.Context, source string, content []byte, opts Options, embedder llm.Embedder, documents document.DocumentStore, vectors vector.VectorStore) (int, error) {
+func ProcessContent(ctx context.Context, source string, content []byte, opts Options, embedder llm.Embedder, documents store.DocumentStore, vectors store.VectorStore) (int, error) {
 	if documents == nil {
 		return 0, errors.New("document store is required")
 	}
@@ -132,7 +131,7 @@ func processContent(ctx context.Context, source string, content []byte, opts Opt
 		return 0, fmt.Errorf("embed got %d vectors for %d chunks", len(embeddings), len(chunks))
 	}
 
-	docs := make([]document.Document, len(chunks))
+	docs := make([]store.Document, len(chunks))
 	ids := make([]string, len(chunks))
 	for index, content := range chunks {
 		id := fmt.Sprintf("%x", sha256.Sum256(fmt.Appendf(nil, "%s:%d", source, index)))
@@ -144,7 +143,7 @@ func processContent(ctx context.Context, source string, content []byte, opts Opt
 			"ingested_at":     time.Now().UTC().Format(time.RFC3339),
 		}
 		ids[index] = id
-		docs[index] = document.Document{ID: id, Content: content, Metadata: metadata}
+		docs[index] = store.Document{ID: id, Content: content, Metadata: metadata}
 	}
 	if err := documents.Upsert(ctx, docs); err != nil {
 		return 0, fmt.Errorf("store documents: %w", err)
@@ -207,6 +206,10 @@ func removeProcessed(opts Options, source string) error {
 		return fmt.Errorf("remove processed directory: %w", err)
 	}
 	return nil
+}
+
+func IsSupported(path string) bool {
+	return supportedFormat(path)
 }
 
 func supportedFormat(path string) bool {
