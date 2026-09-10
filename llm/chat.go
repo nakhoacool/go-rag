@@ -14,6 +14,10 @@ type Chat interface {
 	ChatStream(ctx context.Context, messages []Message, onTextChunk func(string)) (Message, error)
 }
 
+type TextGenerator interface {
+	Chat(ctx context.Context, messages []Message) (Message, error)
+}
+
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
@@ -36,18 +40,9 @@ func New(cfg config.Config) *Client {
 }
 
 func (c *Client) ChatStream(ctx context.Context, messages []Message, onTextChunk func(string)) (Message, error) {
-	providerMessages := make([]provider.Message, 0, len(messages))
-	for _, message := range messages {
-		switch message.Role {
-		case "system":
-			providerMessages = append(providerMessages, goai.SystemMessage(message.Content))
-		case "user":
-			providerMessages = append(providerMessages, goai.UserMessage(message.Content))
-		case "assistant":
-			providerMessages = append(providerMessages, goai.AssistantMessage(message.Content))
-		default:
-			return Message{}, fmt.Errorf("unsupported message role %q", message.Role)
-		}
+	providerMessages, err := toProviderMessages(messages)
+	if err != nil {
+		return Message{}, err
 	}
 
 	stream, err := goai.StreamText(ctx, c.model, goai.WithMessages(providerMessages...))
@@ -69,4 +64,35 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onTextChunk
 		Role:    "assistant",
 		Content: stream.Result().Text,
 	}, nil
+}
+
+func (c *Client) Chat(ctx context.Context, messages []Message) (Message, error) {
+	providerMessages, err := toProviderMessages(messages)
+	if err != nil {
+		return Message{}, err
+	}
+
+	result, err := goai.GenerateText(ctx, c.model, goai.WithMessages(providerMessages...))
+	if err != nil {
+		return Message{}, err
+	}
+
+	return Message{Role: "assistant", Content: result.Text}, nil
+}
+
+func toProviderMessages(messages []Message) ([]provider.Message, error) {
+	providerMessages := make([]provider.Message, 0, len(messages))
+	for _, message := range messages {
+		switch message.Role {
+		case "system":
+			providerMessages = append(providerMessages, goai.SystemMessage(message.Content))
+		case "user":
+			providerMessages = append(providerMessages, goai.UserMessage(message.Content))
+		case "assistant":
+			providerMessages = append(providerMessages, goai.AssistantMessage(message.Content))
+		default:
+			return nil, fmt.Errorf("unsupported message role %q", message.Role)
+		}
+	}
+	return providerMessages, nil
 }

@@ -35,12 +35,16 @@ func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents d
 	}
 	defer w.Close()
 
+	var initialFiles []string
 	if err := filepath.WalkDir(opts.SourceDir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if entry.IsDir() {
 			return w.Add(path)
+		}
+		if supportedFormat(path) {
+			initialFiles = append(initialFiles, path)
 		}
 		return nil
 	}); err != nil {
@@ -66,6 +70,11 @@ func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents d
 			case <-ctx.Done():
 			}
 		})
+	}
+
+	logger.Printf("initial files to be processed: %v", initialFiles)
+	for _, path := range initialFiles {
+		schedule(path)
 	}
 
 	for {
@@ -99,6 +108,17 @@ func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents d
 			if !ok {
 				return nil
 			}
+			if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 && supportedFormat(event.Name) {
+				source, err := sourcePath(opts.SourceDir, event.Name)
+				if err != nil {
+					logger.Printf("source path %q: %v", event.Name, err)
+				} else if err := removeSource(ctx, source, documents, vectors); err != nil {
+					logger.Printf("remove source %q: %v", event.Name, err)
+				}
+				if err := removeProcessed(opts, event.Name); err != nil {
+					logger.Printf("remove processed %q: %v", event.Name, err)
+				}
+			}
 			if event.Op&fsnotify.Create != 0 {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
 					if err := filepath.WalkDir(event.Name, func(path string, entry os.DirEntry, err error) error {
@@ -116,7 +136,7 @@ func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents d
 					continue
 				}
 			}
-			if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename) != 0 {
+			if event.Op&(fsnotify.Create|fsnotify.Write) != 0 {
 				schedule(strings.TrimSpace(event.Name))
 			}
 		}

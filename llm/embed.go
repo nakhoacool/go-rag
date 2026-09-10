@@ -14,6 +14,10 @@ type Embedder interface {
 	Embed(ctx context.Context, texts []string) ([][]float64, error)
 }
 
+type QueryEmbedder interface {
+	EmbedQuery(ctx context.Context, text string) ([]float64, error)
+}
+
 type JinaEmbedder struct {
 	baseURL string
 	apiKey  string
@@ -45,6 +49,18 @@ func NewJinaEmbedder(cfg config.Config) *JinaEmbedder {
 }
 
 func (e *JinaEmbedder) Embed(ctx context.Context, texts []string) ([][]float64, error) {
+	return e.embed(ctx, texts, "retrieval.passage")
+}
+
+func (e *JinaEmbedder) EmbedQuery(ctx context.Context, text string) ([]float64, error) {
+	embeddings, err := e.embed(ctx, []string{text}, "retrieval.query")
+	if err != nil {
+		return nil, err
+	}
+	return embeddings[0], nil
+}
+
+func (e *JinaEmbedder) embed(ctx context.Context, texts []string, task string) ([][]float64, error) {
 	if len(texts) == 0 {
 		return nil, fmt.Errorf("at least one text is required")
 	}
@@ -60,7 +76,7 @@ func (e *JinaEmbedder) Embed(ctx context.Context, texts []string) ([][]float64, 
 
 	body, err := json.Marshal(jinaEmbeddingRequest{
 		Model:      e.model,
-		Task:       "retrieval.passage",
+		Task:       task,
 		Normalized: true,
 		Input: func() []map[string]string {
 			input := make([]map[string]string, len(texts))
@@ -116,3 +132,4 @@ func (e *JinaEmbedder) Embed(ctx context.Context, texts []string) ([][]float64, 
 }
 
 var _ Embedder = (*JinaEmbedder)(nil)
+var _ QueryEmbedder = (*JinaEmbedder)(nil)

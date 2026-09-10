@@ -15,6 +15,16 @@ import (
 
 type Options struct {
 	SystemPromptFile string
+	Retriever        Retriever
+	Rewriter         QueryRewriter
+}
+
+type Retriever interface {
+	Retrieve(ctx context.Context, question string) (string, error)
+}
+
+type QueryRewriter interface {
+	Rewrite(ctx context.Context, history []llm.Message, question string) (string, error)
 }
 
 func RunREPL(ctx context.Context, client llm.Chat, opts Options) error {
@@ -47,11 +57,38 @@ func RunREPL(ctx context.Context, client llm.Chat, opts Options) error {
 			return nil
 		}
 
-		history = append(history, llm.Message{Role: "user", Content: input})
-
 		spin := startSpinner("thinking")
 		var stopOnce sync.Once
-		reply, err := client.ChatStream(ctx, history, func(s string) {
+
+		query := input
+		if opts.Rewriter != nil {
+			rewritten, err := opts.Rewriter.Rewrite(ctx, history, input)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: rewrite query: %v; using original query\n", err)
+			} else {
+				query = rewritten
+			}
+		}
+
+		history = append(history, llm.Message{Role: "user", Content: input})
+		messages := history
+		if opts.Retriever != nil {
+			contextText, err := opts.Retriever.Retrieve(ctx, query)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: retrieve context: %v\n", err)
+				history = history[:len(history)-1]
+				continue
+			}
+			if contextText != "" {
+				messages = append([]llm.Message(nil), history[:len(history)-1]...)
+				messages = append(messages, llm.Message{
+					Role:    "user",
+					Content: contextText + "\n\nQuestion: " + input,
+				})
+			}
+		}
+
+		reply, err := client.ChatStream(ctx, messages, func(s string) {
 			stopOnce.Do(spin.Stop)
 			fmt.Print(s)
 		})

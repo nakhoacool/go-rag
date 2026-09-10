@@ -15,6 +15,7 @@ import (
 type DocumentStore interface {
 	Upsert(ctx context.Context, docs []Document) error
 	Get(ctx context.Context, ids ...string) ([]Document, error)
+	GetBySource(ctx context.Context, source string) ([]Document, error)
 	Delete(ctx context.Context, ids ...string) error
 	DeleteBySource(ctx context.Context, source string) error
 }
@@ -66,6 +67,26 @@ func (s *CloudflareDocumentStore) Get(ctx context.Context, ids ...string) ([]Doc
 	result, err := s.query(ctx,
 		fmt.Sprintf("SELECT id, content, metadata FROM documents WHERE id IN (%s)", placeholders),
 		ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	documents := make([]Document, 0, len(result.Results))
+	for _, row := range result.Results {
+		document, err := decodeDocument(row)
+		if err != nil {
+			return nil, err
+		}
+		documents = append(documents, document)
+	}
+	return documents, nil
+}
+
+func (s *CloudflareDocumentStore) GetBySource(ctx context.Context, source string) ([]Document, error) {
+	result, err := s.query(ctx,
+		"SELECT id, content, metadata FROM documents WHERE json_extract(metadata, '$.source') = ?",
+		[]string{source},
 	)
 	if err != nil {
 		return nil, err
