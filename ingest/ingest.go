@@ -20,10 +20,11 @@ const (
 )
 
 type Options struct {
-	SourceDir    string
-	ProcessedDir string
-	ChunkSize    int
-	ChunkOverlap int
+	SourceDir       string
+	ProcessedDir    string
+	ProcessExisting bool
+	ChunkSize       int
+	ChunkOverlap    int
 }
 
 func sourcePath(sourceDir, source string) (string, error) {

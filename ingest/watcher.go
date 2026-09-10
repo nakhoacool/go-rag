@@ -72,9 +72,11 @@ func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents d
 		})
 	}
 
-	logger.Printf("initial files to be processed: %v", initialFiles)
-	for _, path := range initialFiles {
-		schedule(path)
+	if opts.ProcessExisting {
+		logger.Printf("initial files to be processed: %v", initialFiles)
+		for _, path := range initialFiles {
+			schedule(path)
+		}
 	}
 
 	for {

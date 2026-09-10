@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"go-rag/chat"
 	"go-rag/cloudflare"
 	"go-rag/config"
@@ -11,12 +13,16 @@ import (
 	"go-rag/rag"
 	"go-rag/vector"
 	"log"
+	"os"
 	"sync"
+	"syscall"
 )
 
 func Run(parent context.Context, cfg config.Config) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
+
+	processExisting := askProcessExisting()
 
 	client := llm.New(cfg)
 	cloudflareClient := cloudflare.New(cfg)
@@ -27,7 +33,7 @@ func Run(parent context.Context, cfg config.Config) error {
 	wg.Go(func() {
 		if err := ingest.Watch(
 			ctx,
-			ingest.Options{SourceDir: cfg.IngestDir, ProcessedDir: cfg.ProcessedDir},
+			ingest.Options{SourceDir: cfg.IngestDir, ProcessedDir: cfg.ProcessedDir, ProcessExisting: processExisting},
 			embedder,
 			documents,
 			vectors,
@@ -46,4 +52,20 @@ func Run(parent context.Context, cfg config.Config) error {
 	cancel()
 	wg.Wait()
 	return err
+}
+
+func askProcessExisting() bool {
+	fmt.Print("Process existing files now? [y/N] (5s): ")
+	fd := int(os.Stdin.Fd())
+	set := &syscall.FdSet{}
+	set.Bits[fd/64] |= 1 << (uint(fd) % 64)
+	ready, err := syscall.Select(fd+1, set, nil, nil, &syscall.Timeval{Sec: 5})
+	if err != nil || ready == 0 {
+		fmt.Println()
+		return false
+	}
+
+	answer, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	fmt.Println()
+	return err == nil && (answer == "y\n" || answer == "Y\n")
 }
