@@ -33,10 +33,35 @@ func Run(parent context.Context, cfg config.Config) error {
 	rewriter := rag.NewRewriter(client)
 
 	var wg sync.WaitGroup
+	var srv *web.Server
+	if cfg.HTTPAddr != "" {
+		var err error
+		srv, err = web.New(client, embedder, retriever, rewriter, web.Options{
+			Addr:             cfg.HTTPAddr,
+			SystemPromptFile: cfg.SystemPromptFile,
+			VectorStore:      vectors,
+			DocumentStore:    documents,
+			IngestDir:        cfg.IngestDir,
+			ProcessedDir:     cfg.ProcessedDir,
+			ImagesDir:        cfg.ImagesDir,
+		})
+		if err != nil {
+			return err
+		}
+	}
 	wg.Go(func() {
 		if err := ingest.Watch(
 			ctx,
-			ingest.Options{SourceDir: cfg.IngestDir, ProcessedDir: cfg.ProcessedDir, ProcessExisting: processExisting},
+			ingest.Options{
+				SourceDir:       cfg.IngestDir,
+				ProcessedDir:    cfg.ProcessedDir,
+				ProcessExisting: processExisting,
+				OnProcessed: func(path string, chunks int, err error) {
+					if srv != nil {
+						srv.NotifyUpload(path, chunks, err)
+					}
+				},
+			},
 			embedder,
 			documents,
 			vectors,
@@ -47,18 +72,7 @@ func Run(parent context.Context, cfg config.Config) error {
 	})
 	log.Printf("Watching directory %s for new documents to ingest...", cfg.IngestDir)
 
-	if cfg.HTTPAddr != "" {
-		srv, err := web.New(client, embedder, retriever, rewriter, web.Options{
-			Addr:             cfg.HTTPAddr,
-			SystemPromptFile: cfg.SystemPromptFile,
-			VectorStore:      vectors,
-			DocumentStore:    documents,
-			ProcessedDir:     cfg.ProcessedDir,
-			ImagesDir:        cfg.ImagesDir,
-		})
-		if err != nil {
-			return err
-		}
+	if srv != nil {
 		wg.Go(func() {
 			if err := srv.Run(ctx, cfg.HTTPAddr); err != nil && ctx.Err() == nil {
 				log.Printf("web server stopped: %v", err)

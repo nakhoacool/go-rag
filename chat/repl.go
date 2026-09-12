@@ -8,6 +8,7 @@ import (
 	"go-rag/llm"
 	"go-rag/rag"
 	"io/fs"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -50,12 +51,16 @@ func RunREPL(ctx context.Context, client llm.Chat, opts Options) error {
 			return nil
 		}
 
+		turnStarted := time.Now()
 		spin := startSpinner("thinking")
 		var stopOnce sync.Once
 
 		query := input
+		var rewriteDuration time.Duration
 		if opts.Rewriter != nil {
+			rewriteStarted := time.Now()
 			rewritten, err := opts.Rewriter.Rewrite(ctx, history, input)
+			rewriteDuration = time.Since(rewriteStarted)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error: rewrite query: %v; using original query\n", err)
 			} else {
@@ -65,8 +70,11 @@ func RunREPL(ctx context.Context, client llm.Chat, opts Options) error {
 
 		history = append(history, llm.Message{Role: "user", Content: input})
 		messages := history
+		var retrieveDuration time.Duration
 		if opts.Retriever != nil {
+			retrieveStarted := time.Now()
 			contextText, err := opts.Retriever.Retrieve(ctx, query)
+			retrieveDuration = time.Since(retrieveStarted)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error: retrieve context: %v\n", err)
 				history = history[:len(history)-1]
@@ -81,13 +89,31 @@ func RunREPL(ctx context.Context, client llm.Chat, opts Options) error {
 			}
 		}
 
+		modelStarted := time.Now()
+		var firstToken time.Time
 		reply, err := client.ChatStream(ctx, messages, func(s string) {
+			if firstToken.IsZero() {
+				firstToken = time.Now()
+			}
 			stopOnce.Do(spin.Stop)
 			fmt.Print(s)
 		})
+		modelDuration := time.Since(modelStarted)
 
 		stopOnce.Do(spin.Stop)
 		fmt.Println()
+		if opts.Rewriter != nil {
+			log.Printf("[repl] chat rewrite took %s", rewriteDuration)
+		}
+		if opts.Retriever != nil {
+			log.Printf("[repl] chat retrieval took %s", retrieveDuration)
+		}
+		if firstToken.IsZero() {
+			log.Printf("[repl] chat first token was not received")
+		} else {
+			log.Printf("[repl] chat first token after %s", firstToken.Sub(modelStarted))
+		}
+		log.Printf("[repl] chat model stream took %s; total turn took %s", modelDuration, time.Since(turnStarted))
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)

@@ -24,6 +24,7 @@ type Options struct {
 	ProcessExisting bool
 	ChunkSize       int
 	ChunkOverlap    int
+	OnProcessed     func(path string, chunks int, err error)
 }
 
 func sourcePath(sourceDir, source string) (string, error) {
@@ -82,7 +83,7 @@ func removeSource(ctx context.Context, source string, documents store.DocumentSt
 	return nil
 }
 
-func ProcessContent(ctx context.Context, source string, content []byte, opts Options, embedder llm.Embedder, documents store.DocumentStore, vectors store.VectorStore) (int, error) {
+func processContent(ctx context.Context, source string, content []byte, opts Options, embedder llm.Embedder, documents store.DocumentStore, vectors store.VectorStore) (int, error) {
 	if documents == nil {
 		return 0, errors.New("document store is required")
 	}

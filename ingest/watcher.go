@@ -94,7 +94,10 @@ func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents s
 				}
 				continue
 			}
-			count, err := ProcessContent(ctx, path, content, opts, embedder, documents, vectors)
+			count, err := processContent(ctx, path, content, opts, embedder, documents, vectors)
+			if opts.OnProcessed != nil {
+				opts.OnProcessed(path, count, err)
+			}
 			if err != nil {
 				logger.Printf("ingest %q: %v", path, err)
 				continue
