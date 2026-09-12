@@ -16,15 +16,19 @@ If the latest user message already stands on its own with no references to prior
 Return only the search query, with no explanation, quotes, or additional formatting.
 `
 
-type Rewriter struct {
+type Rewriter interface {
+	Rewrite(ctx context.Context, history []llm.Message, question string) (string, error)
+}
+
+type rewriter struct {
 	client llm.TextGenerator
 }
 
-func NewRewriter(client llm.TextGenerator) *Rewriter {
-	return &Rewriter{client: client}
+func NewRewriter(client llm.TextGenerator) Rewriter {
+	return &rewriter{client: client}
 }
 
-func (r *Rewriter) Rewrite(ctx context.Context, history []llm.Message, question string) (string, error) {
+func (r *rewriter) Rewrite(ctx context.Context, history []llm.Message, question string) (string, error) {
 	messages := make([]llm.Message, 0, len(history)+2)
 	messages = append(messages, llm.Message{Role: "system", Content: rewriterSystemPrompt})
 	for _, message := range history {

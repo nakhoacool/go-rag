@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"go-rag/llm"
+	"go-rag/rag"
 	"io/fs"
 	"os"
 	"strings"
@@ -15,16 +16,8 @@ import (
 
 type Options struct {
 	SystemPromptFile string
-	Retriever        Retriever
-	Rewriter         QueryRewriter
-}
-
-type Retriever interface {
-	Retrieve(ctx context.Context, question string) (string, error)
-}
-
-type QueryRewriter interface {
-	Rewrite(ctx context.Context, history []llm.Message, question string) (string, error)
+	Retriever        rag.Retriever
+	Rewriter         rag.Rewriter
 }
 
 func RunREPL(ctx context.Context, client llm.Chat, opts Options) error {
@@ -83,7 +76,7 @@ func RunREPL(ctx context.Context, client llm.Chat, opts Options) error {
 				messages = append([]llm.Message(nil), history[:len(history)-1]...)
 				messages = append(messages, llm.Message{
 					Role:    "user",
-					Content: contextText + "\n\nQuestion: " + input,
+					Content: contextText + "\n\n--- Question ---\n\n" + input,
 				})
 			}
 		}

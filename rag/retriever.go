@@ -7,21 +7,25 @@ import (
 	"go-rag/store"
 )
 
-type Retriever struct {
+type Retriever interface {
+	Retrieve(ctx context.Context, question string) (string, error)
+}
+
+type retriever struct {
 	embedder  llm.QueryEmbedder
 	documents store.DocumentStore
 	vectors   store.VectorStore
 	topK      int
 }
 
-func NewRetriever(embedder llm.QueryEmbedder, documents store.DocumentStore, vectors store.VectorStore, topK int) *Retriever {
+func NewRetriever(embedder llm.QueryEmbedder, documents store.DocumentStore, vectors store.VectorStore, topK int) Retriever {
 	if topK <= 0 {
 		topK = 5
 	}
-	return &Retriever{embedder: embedder, documents: documents, vectors: vectors, topK: topK}
+	return &retriever{embedder: embedder, documents: documents, vectors: vectors, topK: topK}
 }
 
-func (r *Retriever) Retrieve(ctx context.Context, question string) (string, error) {
+func (r *retriever) Retrieve(ctx context.Context, question string) (string, error) {
 	embedding, err := r.embedder.EmbedQuery(ctx, question)
 	if err != nil {
 		return "", fmt.Errorf("embed question: %w", err)

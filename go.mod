@@ -5,6 +5,7 @@ go 1.26.7
 require (
 	github.com/cloudflare/cloudflare-go/v7 v7.9.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
+	github.com/go-chi/chi/v5 v5.3.2 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect

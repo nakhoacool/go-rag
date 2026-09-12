@@ -19,6 +19,10 @@ type Config struct {
 	IngestDir            string
 	ProcessedDir         string
 	SystemPromptFile     string
+
+	HTTPAddr    string
+	ImagesDir   string
+	VisionModel string
 }
 
 func Load() Config {
@@ -37,14 +41,21 @@ func Load() Config {
 		IngestDir:            os.Getenv("INGEST_DIR"),
 		ProcessedDir:         os.Getenv("PROCESSED_DIR"),
 		SystemPromptFile:     os.Getenv("SYSTEM_PROMPT_FILE"),
+		HTTPAddr:             os.Getenv("HTTP_ADDR"),
+		ImagesDir:            os.Getenv("IMAGES_DIR"),
+		VisionModel:          os.Getenv("VISION_MODEL"),
 	}
 
-	if cfg.IngestDir == ""{
+	if cfg.IngestDir == "" {
 		cfg.IngestDir = "./document/ingest"
 	}
 
 	if cfg.ProcessedDir == "" {
 		cfg.ProcessedDir = "./document/processed"
+	}
+
+	if cfg.ImagesDir == "" {
+		cfg.ImagesDir = "./document/images"
 	}
 
 	return cfg

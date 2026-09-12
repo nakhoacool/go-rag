@@ -11,6 +11,7 @@ import (
 	"go-rag/llm"
 	"go-rag/rag"
 	"go-rag/store"
+	"go-rag/web"
 	"log"
 	"os"
 	"sync"
@@ -28,6 +29,9 @@ func Run(parent context.Context, cfg config.Config) error {
 	documents := store.NewDocumentStore(cloudflareClient)
 	vectors := store.NewVectorStore(cloudflareClient)
 	embedder := llm.NewJinaEmbedder(cfg)
+	retriever := rag.NewRetriever(embedder, documents, vectors, 5)
+	rewriter := rag.NewRewriter(client)
+
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		if err := ingest.Watch(
@@ -43,10 +47,30 @@ func Run(parent context.Context, cfg config.Config) error {
 	})
 	log.Printf("Watching directory %s for new documents to ingest...", cfg.IngestDir)
 
+	if cfg.HTTPAddr != "" {
+		srv, err := web.New(client, embedder, retriever, rewriter, web.Options{
+			Addr:             cfg.HTTPAddr,
+			SystemPromptFile: cfg.SystemPromptFile,
+			VectorStore:      vectors,
+			DocumentStore:    documents,
+			ProcessedDir:     cfg.ProcessedDir,
+			ImagesDir:        cfg.ImagesDir,
+		})
+		if err != nil {
+			return err
+		}
+		wg.Go(func() {
+			if err := srv.Run(ctx, cfg.HTTPAddr); err != nil && ctx.Err() == nil {
+				log.Printf("web server stopped: %v", err)
+			}
+		})
+		log.Printf("web chat at http://localhost%s/chat", cfg.HTTPAddr)
+	}
+
 	err := chat.RunREPL(ctx, client, chat.Options{
 		SystemPromptFile: cfg.SystemPromptFile,
-		Retriever:        rag.NewRetriever(embedder, documents, vectors, 5),
-		Rewriter:         rag.NewRewriter(client),
+		Retriever:        retriever,
+		Rewriter:         rewriter,
 	})
 	cancel()
 	wg.Wait()
