@@ -36,7 +36,7 @@ func Run(parent context.Context, cfg config.Config) error {
 	var srv *web.Server
 	if cfg.HTTPAddr != "" {
 		var err error
-		srv, err = web.New(client, embedder, retriever, rewriter, web.Options{
+		srv, err = web.New(client, client, embedder, retriever, rewriter, web.Options{
 			Addr:             cfg.HTTPAddr,
 			SystemPromptFile: cfg.SystemPromptFile,
 			VectorStore:      vectors,

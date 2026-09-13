@@ -24,18 +24,29 @@ type Message struct {
 }
 
 type Client struct {
-	cfg   config.Config
-	model provider.LanguageModel
+	cfg         config.Config
+	textModel   provider.LanguageModel
+	visionModel provider.LanguageModel
 }
 
 func New(cfg config.Config) *Client {
+	visionModel := provider.LanguageModel(nil)
+	if cfg.VisionModel != "" {
+		visionModel = cloudflare.Chat(
+			cfg.VisionModel,
+			cloudflare.WithAccountID(cfg.AccountID),
+			cloudflare.WithAPIKey(cfg.APIToken),
+		)
+	}
+
 	return &Client{
 		cfg: cfg,
-		model: cloudflare.Chat(
+		textModel: cloudflare.Chat(
 			cfg.Model,
 			cloudflare.WithAccountID(cfg.AccountID),
 			cloudflare.WithAPIKey(cfg.APIToken),
 		),
+		visionModel: visionModel,
 	}
 }
 
@@ -45,7 +56,7 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, onTextChunk
 		return Message{}, err
 	}
 
-	stream, err := goai.StreamText(ctx, c.model, goai.WithMessages(providerMessages...))
+	stream, err := goai.StreamText(ctx, c.textModel, goai.WithMessages(providerMessages...))
 	if err != nil {
 		return Message{}, err
 	}
@@ -72,7 +83,7 @@ func (c *Client) Chat(ctx context.Context, messages []Message) (Message, error) 
 		return Message{}, err
 	}
 
-	result, err := goai.GenerateText(ctx, c.model, goai.WithMessages(providerMessages...))
+	result, err := goai.GenerateText(ctx, c.textModel, goai.WithMessages(providerMessages...))
 	if err != nil {
 		return Message{}, err
 	}

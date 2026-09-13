@@ -42,7 +42,8 @@ type Options struct {
 }
 
 type Server struct {
-	client        llm.Chat
+	text          llm.Chat
+	vision        llm.Vision
 	embedder      llm.Embedder
 	retriever     rag.Retriever
 	rewriter      rag.Rewriter
@@ -58,7 +59,7 @@ type Server struct {
 	title         string
 }
 
-func New(client llm.Chat, embedder llm.Embedder, retriever rag.Retriever, rewriter rag.Rewriter, opts Options) (*Server, error) {
+func New(text llm.Chat, vision llm.Vision, embedder llm.Embedder, retriever rag.Retriever, rewriter rag.Rewriter, opts Options) (*Server, error) {
 	tpl, err := template.ParseFS(templatesFS, "templates/*.gohtml")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -70,7 +71,8 @@ func New(client llm.Chat, embedder llm.Embedder, retriever rag.Retriever, rewrit
 	}
 
 	return &Server{
-		client:        client,
+		text:          text,
+		vision:        vision,
 		embedder:      embedder,
 		retriever:     retriever,
 		rewriter:      rewriter,
@@ -99,17 +101,71 @@ func (s *Server) Routes() http.Handler {
 	}
 	r.Get("/api/upload/events", s.handleUploadEvents)
 
+	if s.vision.HasVision() {
+		r.Post("/api/caption", s.handleCaption)
+	}
+
 	return r
 }
 
 func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tpl.ExecuteTemplate(w, "chat.gohtml", map[string]any{
-		"Title": s.title,
-		//"CaptionEnable": s.client.HasVision(),
+		"Title":          s.title,
+		"CaptionEnabled": s.vision != nil && s.vision.HasVision(),
 	}); err != nil {
 		log.Printf("[web] template error: %v", err)
 	}
+}
+
+type captionResponse struct {
+	Description string `json:"description"`
+}
+
+func (s *Server) handleCaption(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	if s.vision == nil || !s.vision.HasVision() {
+		http.Error(w, "vision model is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		http.Error(w, "image too large or malformed: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		http.Error(w, "missing 'image' field: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	if !ingest.IsImage(filepath.Base(header.Filename)) {
+		http.Error(w, "unsupported image format", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	image, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "read image: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	mime := header.Header.Get("Content-Type")
+
+	generationStarted := time.Now()
+	description, err := s.vision.DescribeImage(r.Context(), mime, image)
+	generationDuration := time.Since(generationStarted)
+	if err != nil {
+		log.Printf("[web] caption failed for %q after %s: %v", header.Filename, generationDuration, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("[web] caption generation took %s; total request took %s", generationDuration, time.Since(started))
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(captionResponse{Description: description})
 }
 
 type chatRequest struct {
@@ -190,7 +246,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	modelStarted := time.Now()
 	var firstToken time.Time
-	_, err := s.client.ChatStream(r.Context(), turn, func(delta string) {
+	_, err := s.text.ChatStream(r.Context(), turn, func(delta string) {
 		if firstToken.IsZero() {
 			firstToken = time.Now()
 		}
