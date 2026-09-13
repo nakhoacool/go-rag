@@ -92,6 +92,11 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/chat", s.handleChatPage)
 	r.Post("/api/chat/stream", s.handleChatStream)
 	r.Post("/api/upload", s.handleUpload)
+	if s.imagesDir != "" {
+		r.Post("/api/upload/image", s.handleUploadImage)
+		fs := http.FileServer(http.Dir(s.imagesDir))
+		r.Handle("/images/*", http.StripPrefix("/images", fs))
+	}
 	r.Get("/api/upload/events", s.handleUploadEvents)
 
 	return r
@@ -268,6 +273,82 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(uploadResponse{
 		Source: name,
 		Bytes:  len(content),
+	})
+}
+
+type uploadImageResponse struct {
+	Source      string `json:"source"`
+	ImagePath   string `json:"image_path"`
+	Description string `json:"description"`
+	Bytes       int    `json:"bytes"`
+	Chunks      int    `json:"chunks"`
+}
+
+func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
+	if s.documentStore == nil || s.vectorStore == nil {
+		http.Error(w, "ingest is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	if s.imagesDir == "" {
+		http.Error(w, "image upload not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		http.Error(w, "upload too large or malformed: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	description := strings.TrimSpace(r.FormValue("description"))
+	if description == "" {
+		http.Error(w, "description is required", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		http.Error(w, "missing 'image' field", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	original := filepath.Base(header.Filename)
+	if !ingest.IsImage(original) {
+		http.Error(w, "unsupported image format (allowed: .png, .jpg, .jpeg, .webp, .gif)", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "read upload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := os.MkdirAll(s.imagesDir, 0755); err != nil {
+		http.Error(w, "create image directory: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	path := filepath.Join(s.imagesDir, original)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		http.Error(w, "save image: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	chunks, err := ingest.ProcessImage(r.Context(), original, description, ingest.Options{}, s.embedder, s.documentStore, s.vectorStore)
+	if err != nil {
+		_ = os.Remove(path)
+		http.Error(w, "ingest image: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(uploadImageResponse{
+		Source:      original,
+		ImagePath:   ingest.ImagePathPrefix + original,
+		Description: description,
+		Bytes:       len(content),
+		Chunks:      chunks,
 	})
 }
 

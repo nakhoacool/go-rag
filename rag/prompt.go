@@ -3,6 +3,7 @@ package rag
 import (
 	"fmt"
 	"go-rag/store"
+	"path/filepath"
 	"strings"
 )
 
@@ -33,7 +34,11 @@ func formatContext(hits []store.Match, documents map[string]store.Document) stri
 		if content == "" {
 			continue
 		}
-		fmt.Fprintf(&sb, "[%d] Source: %s (similarity %.2f)\n%s\n\n", i+1, source, h.Score, content)
+		if h.Metadata["type"] == "image" && source != unknownSource {
+			fmt.Fprintf(&sb, "[%d] Source: %s [image: %s] (similarity %.2f)\n%s\n\n", i+1, filepath.Base(source), h.Metadata["source"], h.Score, content)
+			continue
+		}
+		fmt.Fprintf(&sb, "[%d] Source: %s (similarity %.2f)\n%s\n\n", i+1, filepath.Base(source), h.Score, content)
 	}
 
 	return strings.TrimSpace(sb.String())

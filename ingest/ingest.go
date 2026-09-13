@@ -27,62 +27,6 @@ type Options struct {
 	OnProcessed     func(path string, chunks int, err error)
 }
 
-func sourcePath(sourceDir, source string) (string, error) {
-	relative, err := filepath.Rel(sourceDir, source)
-	if err != nil {
-		return "", fmt.Errorf("get relative path for %q: %w", source, err)
-	}
-	return filepath.Clean(relative), nil
-}
-
-func removeStale(ctx context.Context, source string, keep []string, documents store.DocumentStore, vectors store.VectorStore) error {
-	existing, err := documents.GetBySource(ctx, source)
-	if err != nil {
-		return fmt.Errorf("find existing documents: %w", err)
-	}
-	current := make(map[string]struct{}, len(keep))
-	for _, id := range keep {
-		current[id] = struct{}{}
-	}
-	stale := make([]string, 0, len(existing))
-	for _, document := range existing {
-		if _, ok := current[document.ID]; !ok {
-			stale = append(stale, document.ID)
-		}
-	}
-	if len(stale) == 0 {
-		return nil
-	}
-	if err := vectors.Delete(ctx, stale...); err != nil {
-		return fmt.Errorf("delete stale vectors: %w", err)
-	}
-	if err := documents.Delete(ctx, stale...); err != nil {
-		return fmt.Errorf("delete stale documents: %w", err)
-	}
-	return nil
-}
-
-func removeSource(ctx context.Context, source string, documents store.DocumentStore, vectors store.VectorStore) error {
-	existing, err := documents.GetBySource(ctx, source)
-	if err != nil {
-		return fmt.Errorf("find source documents: %w", err)
-	}
-	ids := make([]string, 0, len(existing))
-	for _, document := range existing {
-		ids = append(ids, document.ID)
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	if err := vectors.Delete(ctx, ids...); err != nil {
-		return fmt.Errorf("delete source vectors: %w", err)
-	}
-	if err := documents.Delete(ctx, ids...); err != nil {
-		return fmt.Errorf("delete source documents: %w", err)
-	}
-	return nil
-}
-
 func processContent(ctx context.Context, source string, content []byte, opts Options, embedder llm.Embedder, documents store.DocumentStore, vectors store.VectorStore) (int, error) {
 	if documents == nil {
 		return 0, errors.New("document store is required")
@@ -163,6 +107,74 @@ func processContent(ctx context.Context, source string, content []byte, opts Opt
 	return len(chunks), nil
 }
 
+func sourcePath(sourceDir, source string) (string, error) {
+	relative, err := filepath.Rel(sourceDir, source)
+	if err != nil {
+		return "", fmt.Errorf("get relative path for %q: %w", source, err)
+	}
+	return filepath.Clean(relative), nil
+}
+
+func removeStale(ctx context.Context, source string, keep []string, documents store.DocumentStore, vectors store.VectorStore) error {
+	existing, err := documents.GetBySource(ctx, source)
+	if err != nil {
+		return fmt.Errorf("find existing documents: %w", err)
+	}
+	current := make(map[string]struct{}, len(keep))
+	for _, id := range keep {
+		current[id] = struct{}{}
+	}
+	stale := make([]string, 0, len(existing))
+	for _, document := range existing {
+		if _, ok := current[document.ID]; !ok {
+			stale = append(stale, document.ID)
+		}
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	if err := vectors.Delete(ctx, stale...); err != nil {
+		return fmt.Errorf("delete stale vectors: %w", err)
+	}
+	if err := documents.Delete(ctx, stale...); err != nil {
+		return fmt.Errorf("delete stale documents: %w", err)
+	}
+	return nil
+}
+
+func removeSource(ctx context.Context, source string, documents store.DocumentStore, vectors store.VectorStore) error {
+	existing, err := documents.GetBySource(ctx, source)
+	if err != nil {
+		return fmt.Errorf("find source documents: %w", err)
+	}
+	ids := make([]string, 0, len(existing))
+	for _, document := range existing {
+		ids = append(ids, document.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := vectors.Delete(ctx, ids...); err != nil {
+		return fmt.Errorf("delete source vectors: %w", err)
+	}
+	if err := documents.Delete(ctx, ids...); err != nil {
+		return fmt.Errorf("delete source documents: %w", err)
+	}
+	return nil
+}
+
+func removeProcessed(opts Options, source string) error {
+	relative, err := filepath.Rel(opts.SourceDir, source)
+	if err != nil {
+		return fmt.Errorf("get relative path for %q: %w", source, err)
+	}
+	directory := filepath.Join(opts.ProcessedDir, filepath.Dir(relative), strings.TrimSuffix(filepath.Base(relative), filepath.Ext(relative)))
+	if err := os.RemoveAll(directory); err != nil {
+		return fmt.Errorf("remove processed directory: %w", err)
+	}
+	return nil
+}
+
 func writeChunks(opts Options, source string, chunks []string) error {
 	relative, err := filepath.Rel(opts.SourceDir, source)
 	if err != nil {
@@ -193,18 +205,6 @@ func writeChunks(opts Options, source string, chunks []string) error {
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			return fmt.Errorf("write chunk %q: %w", path, err)
 		}
-	}
-	return nil
-}
-
-func removeProcessed(opts Options, source string) error {
-	relative, err := filepath.Rel(opts.SourceDir, source)
-	if err != nil {
-		return fmt.Errorf("get relative path for %q: %w", source, err)
-	}
-	directory := filepath.Join(opts.ProcessedDir, filepath.Dir(relative), strings.TrimSuffix(filepath.Base(relative), filepath.Ext(relative)))
-	if err := os.RemoveAll(directory); err != nil {
-		return fmt.Errorf("remove processed directory: %w", err)
 	}
 	return nil
 }

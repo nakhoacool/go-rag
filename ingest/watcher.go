@@ -100,6 +100,9 @@ func Watch(ctx context.Context, opts Options, embedder llm.Embedder, documents s
 			}
 			if err != nil {
 				logger.Printf("ingest %q: %v", path, err)
+				if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) {
+					logger.Printf("remove failed source %q: %v", path, removeErr)
+				}
 				continue
 			}
 			logger.Printf("ingested %d chunks from %s", count, path)

@@ -33,3 +33,8 @@ go.work.sum
 
 document/ingest/*
 document/processed/*
+document/images/*
+
+!document/ingest/.gitkeep
+!document/processed/.gitkeep
+!document/images/.gitkeep
