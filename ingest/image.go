@@ -26,7 +26,7 @@ func IsImage(name string) bool {
 	return imageExtensions[strings.ToLower(filepath.Ext(name))]
 }
 
-func ProcessImage(ctx context.Context, name, description string, opts Options, embedder llm.Embedder, documents store.DocumentStore, vectors store.VectorStore) (int, error) {
+func processImage(ctx context.Context, name, description string, opts Options, embedder llm.Embedder, documents store.DocumentStore, vectors store.VectorStore) (int, error) {
 	if embedder == nil {
 		return 0, errors.New("embedder is required")
 	}

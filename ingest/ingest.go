@@ -21,6 +21,7 @@ const (
 type Options struct {
 	SourceDir       string
 	ProcessedDir    string
+	ImagesDir       string
 	ProcessExisting bool
 	ChunkSize       int
 	ChunkOverlap    int

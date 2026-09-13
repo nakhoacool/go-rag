@@ -71,6 +71,29 @@ func Run(parent context.Context, cfg config.Config) error {
 		}
 	})
 	log.Printf("Watching directory %s for new documents to ingest...", cfg.IngestDir)
+	wg.Go(func() {
+		if err := ingest.WatchImages(
+			ctx,
+			ingest.Options{
+				ImagesDir:       cfg.ImagesDir,
+				ProcessExisting: processExisting,
+				OnProcessed: func(path string, chunks int, err error) {
+					if srv != nil {
+						srv.NotifyUpload(path, chunks, err)
+					}
+				},
+			},
+			embedder,
+			documents,
+			vectors,
+			log.Default(),
+		); err != nil {
+			log.Printf("image watcher stopped: %v", err)
+		}
+	})
+	if cfg.ImagesDir != "" {
+		log.Printf("Watching directory %s for new images to ingest...", cfg.ImagesDir)
+	}
 
 	if srv != nil {
 		wg.Go(func() {

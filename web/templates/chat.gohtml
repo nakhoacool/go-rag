@@ -274,6 +274,20 @@
     const notice = renderNotice(`Uploading ${file.name}…`, "info");
 
     try {
+      const events = new EventSource(
+        `/api/upload/events?source=${encodeURIComponent(file.name)}`
+      );
+      const processed = new Promise((resolve, reject) => {
+        events.addEventListener("complete", (event) => {
+          events.close();
+          resolve(JSON.parse(event.data));
+        });
+        events.addEventListener("error", (event) => {
+          events.close();
+          reject(new Error(event.data || "ingestion failed"));
+        });
+      });
+
       const body = new FormData();
       body.append("image", file);
       body.append("description", description);
@@ -281,6 +295,7 @@
       const res = await fetch("/api/upload/image", { method: "POST", body });
 
       if (!res.ok) {
+        events.close();
         const err = (await res.text()).trim();
         notice.textContent = `❌ ${file.name}: ${err || res.statusText}`;
         notice.parentElement.querySelector("div").className =
@@ -288,8 +303,10 @@
         return;
       }
       const data = await res.json();
+      notice.textContent = `Queued "${data.source}" for ingestion…`;
+      const status = await processed;
       notice.textContent =
-        `✅ Added image "${data.source}" · ${data.chunks} chunk${data.chunks === 1 ? "" : "s"} · ${data.bytes} bytes`;
+        `✅ Added image "${data.source}" · ${status.chunks} chunk${status.chunks === 1 ? "" : "s"} · ${data.bytes} bytes`;
       notice.parentElement.querySelector("div").className =
         "max-w-[90%] rounded-full px-4 py-1.5 text-xs italic ring-1 bg-emerald-50 text-emerald-700 ring-emerald-200";
       imageDialog.close();

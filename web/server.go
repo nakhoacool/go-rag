@@ -332,14 +332,6 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-type uploadImageResponse struct {
-	Source      string `json:"source"`
-	ImagePath   string `json:"image_path"`
-	Description string `json:"description"`
-	Bytes       int    `json:"bytes"`
-	Chunks      int    `json:"chunks"`
-}
-
 func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 	if s.documentStore == nil || s.vectorStore == nil {
 		http.Error(w, "ingest is not configured", http.StatusServiceUnavailable)
@@ -365,7 +357,7 @@ func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 
 	file, header, err := r.FormFile("image")
 	if err != nil {
-		http.Error(w, "missing 'image' field", http.StatusBadRequest)
+		http.Error(w, "missing 'image' field: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
@@ -385,26 +377,22 @@ func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "create image directory: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	descPath := filepath.Join(s.imagesDir, original+".description")
+	if err := os.WriteFile(descPath, []byte(description), 0644); err != nil {
+		http.Error(w, "save description: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	path := filepath.Join(s.imagesDir, original)
 	if err := os.WriteFile(path, content, 0644); err != nil {
+		_ = os.Remove(descPath)
 		http.Error(w, "save image: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	chunks, err := ingest.ProcessImage(r.Context(), original, description, ingest.Options{}, s.embedder, s.documentStore, s.vectorStore)
-	if err != nil {
-		_ = os.Remove(path)
-		http.Error(w, "ingest image: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(uploadImageResponse{
-		Source:      original,
-		ImagePath:   ingest.ImagePathPrefix + original,
-		Description: description,
-		Bytes:       len(content),
-		Chunks:      chunks,
+	_ = json.NewEncoder(w).Encode(uploadResponse{
+		Source: original,
+		Bytes:  len(content),
 	})
 }
 
@@ -415,7 +403,7 @@ type uploadEvent struct {
 
 func (s *Server) handleUploadEvents(w http.ResponseWriter, r *http.Request) {
 	name := filepath.Base(strings.TrimSpace(r.URL.Query().Get("source")))
-	if name == "." || name == "" || !ingest.IsSupported(name) {
+	if name == "." || name == "" || (!ingest.IsSupported(name) && !ingest.IsImage(name)) {
 		http.Error(w, "invalid source", http.StatusBadRequest)
 		return
 	}
